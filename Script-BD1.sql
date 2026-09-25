@@ -389,3 +389,502 @@ BEGIN
     END IF;
 END //
 DELIMITER ;
+
+-- -----------------------------------------------------
+-- Procedimientos ABM para Pedido
+-- -----------------------------------------------------
+
+DROP PROCEDURE IF EXISTS sp_altaPedido;
+
+DELIMITER //
+CREATE PROCEDURE sp_altaPedido(
+    IN p_id_concesionario INT,
+    IN p_id_modelo INT,
+    IN p_cantidad INT,
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE v_id_pedido INT;
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al insertar pedido';
+    END;
+
+    START TRANSACTION;
+
+    IF NOT EXISTS(SELECT 1 FROM concesionario WHERE id_concesionario = p_id_concesionario) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe el concesionario';
+        ROLLBACK;
+    ELSEIF NOT EXISTS(SELECT 1 FROM modelo WHERE id_modelo = p_id_modelo) THEN
+        SET nResultado = -3;
+        SET cMensaje = 'No existe el modelo';
+        ROLLBACK;
+    ELSE
+        INSERT INTO pedido(fecha_hora_pedido_realizado, concesionario_id_concesionario)
+        VALUES (NOW(), p_id_concesionario);
+
+        SET v_id_pedido = LAST_INSERT_ID();
+
+        INSERT INTO detalle_pedido(modelo_id_modelo, pedido_id_pedido, cantidad)
+        VALUES (p_id_modelo, v_id_pedido, p_cantidad);
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+DROP PROCEDURE IF EXISTS sp_modificarPedido;
+
+DELIMITER //
+CREATE PROCEDURE sp_modificarPedido(
+    IN p_id_pedido INT,
+    IN p_id_concesionario INT,
+    IN p_id_modelo INT,
+    IN p_cantidad INT,
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al modificar pedido';
+    END;
+
+    START TRANSACTION;
+
+    IF NOT EXISTS(SELECT 1 FROM pedido WHERE id_pedido = p_id_pedido) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe el pedido';
+        ROLLBACK;
+    ELSEIF NOT EXISTS(SELECT 1 FROM concesionario WHERE id_concesionario = p_id_concesionario) THEN
+        SET nResultado = -3;
+        SET cMensaje = 'No existe el concesionario';
+        ROLLBACK;
+    ELSEIF NOT EXISTS(SELECT 1 FROM modelo WHERE id_modelo = p_id_modelo) THEN
+        SET nResultado = -4;
+        SET cMensaje = 'No existe el modelo';
+        ROLLBACK;
+    ELSE
+        UPDATE pedido
+        SET concesionario_id_concesionario = p_id_concesionario
+        WHERE id_pedido = p_id_pedido;
+
+        -- Actualizamos el detalle del pedido
+        DELETE FROM detalle_pedido WHERE pedido_id_pedido = p_id_pedido;
+        INSERT INTO detalle_pedido(modelo_id_modelo, pedido_id_pedido, cantidad)
+        VALUES (p_id_modelo, p_id_pedido, p_cantidad);
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+DROP PROCEDURE IF EXISTS sp_bajaPedido;
+
+DELIMITER //
+CREATE PROCEDURE sp_bajaPedido(
+    IN p_id_pedido INT,
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al eliminar pedido';
+    END;
+
+    START TRANSACTION;
+
+    IF NOT EXISTS(SELECT 1 FROM pedido WHERE id_pedido = p_id_pedido) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe el pedido';
+        ROLLBACK;
+    ELSEIF EXISTS(SELECT 1 FROM automovil WHERE pedido_id_pedido = p_id_pedido) THEN
+        SET nResultado = -3;
+        SET cMensaje = 'No se puede eliminar el pedido, ya que tiene automoviles asociados';
+        ROLLBACK;
+    ELSE
+        DELETE FROM detalle_pedido WHERE pedido_id_pedido = p_id_pedido;
+        DELETE FROM pedido WHERE id_pedido = p_id_pedido;
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- Procedimientos ABM para Modelo
+-- -----------------------------------------------------
+
+DROP PROCEDURE IF EXISTS sp_altaModelo;
+
+DELIMITER //
+CREATE PROCEDURE sp_altaModelo(
+    IN p_nombre VARCHAR(45),
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al insertar modelo';
+    END;
+
+    START TRANSACTION;
+
+    IF EXISTS(SELECT 1 FROM modelo WHERE nombre = p_nombre) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'Ya existe un modelo con ese nombre';
+        ROLLBACK;
+    ELSE
+        INSERT INTO modelo(nombre)
+        VALUES (p_nombre);
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+DROP PROCEDURE IF EXISTS sp_modificarModelo;
+
+DELIMITER //
+CREATE PROCEDURE sp_modificarModelo(
+    IN p_id_modelo INT,
+    IN p_nombre VARCHAR(45),
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al modificar modelo';
+    END;
+
+    START TRANSACTION;
+
+    IF NOT EXISTS(SELECT 1 FROM modelo WHERE id_modelo = p_id_modelo) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe el modelo';
+        ROLLBACK;
+    ELSEIF EXISTS(SELECT 1 FROM modelo WHERE nombre = p_nombre AND id_modelo <> p_id_modelo) THEN
+        SET nResultado = -3;
+        SET cMensaje = 'Ya existe otro modelo con ese nombre';
+        ROLLBACK;
+    ELSE
+        UPDATE modelo
+        SET nombre = p_nombre
+        WHERE id_modelo = p_id_modelo;
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+DROP PROCEDURE IF EXISTS sp_bajaModelo;
+
+DELIMITER //
+CREATE PROCEDURE sp_bajaModelo(
+    IN p_id_modelo INT,
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al eliminar modelo';
+    END;
+
+    START TRANSACTION;
+
+    IF NOT EXISTS(SELECT 1 FROM modelo WHERE id_modelo = p_id_modelo) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe el modelo';
+        ROLLBACK;
+    ELSEIF EXISTS(SELECT 1 FROM linea_de_montaje WHERE modelo_id_modelo = p_id_modelo) THEN
+        SET nResultado = -3;
+        SET cMensaje = 'No se puede eliminar el modelo, tiene una linea de montaje asociada';
+        ROLLBACK;
+    ELSEIF EXISTS(SELECT 1 FROM automovil WHERE modelo_id_modelo = p_id_modelo) THEN
+        SET nResultado = -4;
+        SET cMensaje = 'No se puede eliminar el modelo, ya que tiene automoviles asociados';
+        ROLLBACK;
+    ELSEIF EXISTS(SELECT 1 FROM detalle_pedido WHERE modelo_id_modelo = p_id_modelo) THEN
+        SET nResultado = -5;
+        SET cMensaje = 'No se puede eliminar el modelo, ya que tiene pedidos asociados';
+        ROLLBACK;
+    ELSE
+        DELETE FROM modelo WHERE id_modelo = p_id_modelo;
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- Procedimientos ABM para Proveedor
+-- -----------------------------------------------------
+
+DROP PROCEDURE IF EXISTS sp_altaProveedor;
+
+DELIMITER //
+CREATE PROCEDURE sp_altaProveedor(
+    IN p_nombre VARCHAR(45),
+    IN p_direccion VARCHAR(45),
+    IN p_telefono VARCHAR(45),
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al insertar proveedor';
+    END;
+
+    START TRANSACTION;
+
+    IF EXISTS(SELECT 1 FROM proveedor 
+              WHERE nombre_proveedor = p_nombre AND direccion_proveedor = p_direccion) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'Ya existe un proveedor con ese nombre y dirección';
+        ROLLBACK;
+    ELSE
+        INSERT INTO proveedor(nombre_proveedor, direccion_proveedor, telefono_proveedor)
+        VALUES (p_nombre, p_direccion, p_telefono);
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+DROP PROCEDURE IF EXISTS sp_modificarProveedor;
+
+DELIMITER //
+CREATE PROCEDURE sp_modificarProveedor(
+    IN p_id_proveedor INT,
+    IN p_nombre VARCHAR(45),
+    IN p_direccion VARCHAR(45),
+    IN p_telefono VARCHAR(45),
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al modificar proveedor';
+    END;
+
+    START TRANSACTION;
+
+    IF NOT EXISTS(SELECT 1 FROM proveedor WHERE id_proveedor = p_id_proveedor) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe el proveedor';
+        ROLLBACK;
+    ELSEIF EXISTS(SELECT 1 FROM proveedor 
+                  WHERE nombre_proveedor = p_nombre AND direccion_proveedor = p_direccion 
+                  AND id_proveedor <> p_id_proveedor) THEN
+        SET nResultado = -3;
+        SET cMensaje = 'Ya existe otro proveedor con ese nombre y dirección';
+        ROLLBACK;
+    ELSE
+        UPDATE proveedor
+        SET nombre_proveedor = p_nombre,
+            direccion_proveedor = p_direccion,
+            telefono_proveedor = p_telefono
+        WHERE id_proveedor = p_id_proveedor;
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+DROP PROCEDURE IF EXISTS sp_bajaProveedor;
+
+DELIMITER //
+CREATE PROCEDURE sp_bajaProveedor(
+    IN p_id_proveedor INT,
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al eliminar proveedor';
+    END;
+
+    START TRANSACTION;
+
+    IF NOT EXISTS(SELECT 1 FROM proveedor WHERE id_proveedor = p_id_proveedor) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe el proveedor';
+        ROLLBACK;
+    ELSEIF EXISTS(SELECT 1 FROM compra WHERE proveedor_id_proveedor = p_id_proveedor) THEN
+        SET nResultado = -3;
+        SET cMensaje = 'No se puede eliminar el proveedor, tiene compras asociadas';
+        ROLLBACK;
+    ELSEIF EXISTS(SELECT 1 FROM proveedor_insumo WHERE proveedor_id_proveedor = p_id_proveedor) THEN
+        SET nResultado = -4;
+        SET cMensaje = 'No se puede eliminar el proveedor, tiene insumos asociados';
+        ROLLBACK;
+    ELSE
+        DELETE FROM proveedor WHERE id_proveedor = p_id_proveedor;
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- Procedimientos ABM para Insumo
+-- -----------------------------------------------------
+
+DROP PROCEDURE IF EXISTS sp_altaInsumo;
+
+DELIMITER //
+CREATE PROCEDURE sp_altaInsumo(
+    IN p_codigo_insumo INT,
+    IN p_descripcion VARCHAR(45),
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al insertar insumo';
+    END;
+
+    START TRANSACTION;
+
+    IF EXISTS(SELECT 1 FROM insumo WHERE codigo_insumo = p_codigo_insumo) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'Ya existe un insumo con ese código';
+        ROLLBACK;
+    ELSE
+        INSERT INTO insumo(codigo_insumo, descripcion_insumo)
+        VALUES (p_codigo_insumo, p_descripcion);
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+DROP PROCEDURE IF EXISTS sp_modificarInsumo;
+
+DELIMITER //
+CREATE PROCEDURE sp_modificarInsumo(
+    IN p_codigo_insumo INT,
+    IN p_descripcion VARCHAR(45),
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al modificar insumo';
+    END;
+
+    START TRANSACTION;
+
+    IF NOT EXISTS(SELECT 1 FROM insumo WHERE codigo_insumo = p_codigo_insumo) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe el insumo';
+        ROLLBACK;
+    ELSE
+        UPDATE insumo
+        SET descripcion_insumo = p_descripcion
+        WHERE codigo_insumo = p_codigo_insumo;
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+DROP PROCEDURE IF EXISTS sp_bajaInsumo;
+
+DELIMITER //
+CREATE PROCEDURE sp_bajaInsumo(
+    IN p_codigo_insumo INT,
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al eliminar insumo';
+    END;
+
+    START TRANSACTION;
+
+    IF NOT EXISTS(SELECT 1 FROM insumo WHERE codigo_insumo = p_codigo_insumo) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe el insumo';
+        ROLLBACK;
+    ELSEIF EXISTS(SELECT 1 FROM detalle_compra WHERE insumo_codigo_insumo = p_codigo_insumo) THEN
+        SET nResultado = -3;
+        SET cMensaje = 'No se puede eliminar el insumo, tiene detalles de compra asociados';
+        ROLLBACK;
+    ELSEIF EXISTS(SELECT 1 FROM estacion_has_insumo WHERE insumo_codigo_insumo = p_codigo_insumo) THEN
+        SET nResultado = -4;
+        SET cMensaje = 'No se puede eliminar el insumo, está asignado a una estación';
+        ROLLBACK;
+    ELSEIF EXISTS(SELECT 1 FROM proveedor_insumo WHERE insumo_codigo_insumo = p_codigo_insumo) THEN
+        SET nResultado = -5;
+        SET cMensaje = 'No se puede eliminar el insumo, tiene proveedores asociados';
+        ROLLBACK;
+    ELSE
+        DELETE FROM insumo WHERE codigo_insumo = p_codigo_insumo;
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
