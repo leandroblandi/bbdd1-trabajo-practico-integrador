@@ -81,6 +81,3 @@ Cada insumo de producción tiene un código que lo identifica, una descripción 
 ## Quinta etapa - Optimización de reportes
 
 9. Teniendo en cuenta las consultas anteriores, construir algún índice que pueda facilitar la lectura de los datos.
-```eof
-
-El archivo se encuentra listo y estructurado. Separé los diferentes conceptos y listados utilizando viñetas y resaltados para que la lectura de las etapas y los requerimientos de la base de datos sea mucho más clara. ¡Espero que te sea de gran utilidad para resolver el TP!
