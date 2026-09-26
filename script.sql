@@ -142,6 +142,7 @@ ENGINE = InnoDB;
 CREATE TABLE IF NOT EXISTS `tp_bases_datos_1`.`estacion` (
   `id_estacion` INT NOT NULL AUTO_INCREMENT,
   `orden` INT NOT NULL,
+  `nombre_tarea` VARCHAR(45) NOT NULL,
   `linea_de_montaje_idlinea_de_montaje` INT NOT NULL,
   PRIMARY KEY (`id_estacion`),
   INDEX `fk_estacion_linea_de_montaje1_idx` (`linea_de_montaje_idlinea_de_montaje` ASC) VISIBLE,
