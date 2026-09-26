@@ -390,22 +390,20 @@ BEGIN
 END //
 DELIMITER ;
 
--- -----------------------------------------------------
--- Procedimientos ABM para Pedido
--- -----------------------------------------------------
 
+-- =========================================================
+-- ALTA de Pedido (cabecera)
+-- =========================================================
 DROP PROCEDURE IF EXISTS sp_altaPedido;
 
 DELIMITER //
 CREATE PROCEDURE sp_altaPedido(
     IN p_id_concesionario INT,
-    IN p_id_modelo INT,
-    IN p_cantidad INT,
+    OUT p_id_pedido INT,
     OUT nResultado INT,
     OUT cMensaje VARCHAR(200)
 )
 BEGIN
-    DECLARE v_id_pedido INT;
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         ROLLBACK;
@@ -419,19 +417,11 @@ BEGIN
         SET nResultado = -2;
         SET cMensaje = 'No existe el concesionario';
         ROLLBACK;
-    ELSEIF NOT EXISTS(SELECT 1 FROM modelo WHERE id_modelo = p_id_modelo) THEN
-        SET nResultado = -3;
-        SET cMensaje = 'No existe el modelo';
-        ROLLBACK;
     ELSE
-        INSERT INTO pedido(fecha_hora_pedido_realizado, concesionario_id_concesionario)
-        VALUES (NOW(), p_id_concesionario);
+        INSERT INTO pedido(fecha_hora_pedido_realizado, fecha_entrega_estimada, concesionario_id_concesionario)
+        VALUES (NOW(), NULL, p_id_concesionario);
 
-        SET v_id_pedido = LAST_INSERT_ID();
-
-        INSERT INTO detalle_pedido(modelo_id_modelo, pedido_id_pedido, cantidad)
-        VALUES (p_id_modelo, v_id_pedido, p_cantidad);
-
+        SET p_id_pedido = LAST_INSERT_ID();
         SET nResultado = 0;
         SET cMensaje = '';
         COMMIT;
@@ -439,14 +429,16 @@ BEGIN
 END //
 DELIMITER ;
 
+
+-- =========================================================
+-- MODIFICACION de Pedido (cabecera)
+-- =========================================================
 DROP PROCEDURE IF EXISTS sp_modificarPedido;
 
 DELIMITER //
 CREATE PROCEDURE sp_modificarPedido(
     IN p_id_pedido INT,
     IN p_id_concesionario INT,
-    IN p_id_modelo INT,
-    IN p_cantidad INT,
     OUT nResultado INT,
     OUT cMensaje VARCHAR(200)
 )
@@ -468,19 +460,10 @@ BEGIN
         SET nResultado = -3;
         SET cMensaje = 'No existe el concesionario';
         ROLLBACK;
-    ELSEIF NOT EXISTS(SELECT 1 FROM modelo WHERE id_modelo = p_id_modelo) THEN
-        SET nResultado = -4;
-        SET cMensaje = 'No existe el modelo';
-        ROLLBACK;
     ELSE
         UPDATE pedido
         SET concesionario_id_concesionario = p_id_concesionario
         WHERE id_pedido = p_id_pedido;
-
-        -- Actualizamos el detalle del pedido
-        DELETE FROM detalle_pedido WHERE pedido_id_pedido = p_id_pedido;
-        INSERT INTO detalle_pedido(modelo_id_modelo, pedido_id_pedido, cantidad)
-        VALUES (p_id_modelo, p_id_pedido, p_cantidad);
 
         SET nResultado = 0;
         SET cMensaje = '';
@@ -489,6 +472,10 @@ BEGIN
 END //
 DELIMITER ;
 
+
+-- =========================================================
+-- BAJA de Pedido (cabecera)
+-- =========================================================
 DROP PROCEDURE IF EXISTS sp_bajaPedido;
 
 DELIMITER //
@@ -518,6 +505,138 @@ BEGIN
     ELSE
         DELETE FROM detalle_pedido WHERE pedido_id_pedido = p_id_pedido;
         DELETE FROM pedido WHERE id_pedido = p_id_pedido;
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+-- =========================================================
+-- ALTA de Detalle de Pedido
+-- =========================================================
+DROP PROCEDURE IF EXISTS sp_altaPedidoDetalle;
+
+DELIMITER //
+CREATE PROCEDURE sp_altaPedidoDetalle(
+    IN p_id_pedido INT,
+    IN p_id_modelo INT,
+    IN p_cantidad INT,
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al insertar detalle del pedido';
+    END;
+
+    START TRANSACTION;
+
+    IF NOT EXISTS(SELECT 1 FROM pedido WHERE id_pedido = p_id_pedido) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe el pedido';
+        ROLLBACK;
+    ELSEIF NOT EXISTS(SELECT 1 FROM modelo WHERE id_modelo = p_id_modelo) THEN
+        SET nResultado = -3;
+        SET cMensaje = 'No existe el modelo';
+        ROLLBACK;
+    ELSEIF EXISTS(SELECT 1 FROM detalle_pedido
+                  WHERE pedido_id_pedido = p_id_pedido AND modelo_id_modelo = p_id_modelo) THEN
+        SET nResultado = -4;
+        SET cMensaje = 'Ese modelo ya esta cargado en este pedido';
+        ROLLBACK;
+    ELSE
+        INSERT INTO detalle_pedido(modelo_id_modelo, pedido_id_pedido, cantidad)
+        VALUES (p_id_modelo, p_id_pedido, p_cantidad);
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+
+-- =========================================================
+-- MODIFICACION de Detalle de Pedido
+-- =========================================================
+DROP PROCEDURE IF EXISTS sp_modificarPedidoDetalle;
+
+DELIMITER //
+CREATE PROCEDURE sp_modificarPedidoDetalle(
+    IN p_id_pedido INT,
+    IN p_id_modelo INT,
+    IN p_cantidad INT,
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al modificar detalle del pedido';
+    END;
+
+    START TRANSACTION;
+
+    IF NOT EXISTS(SELECT 1 FROM detalle_pedido
+                  WHERE pedido_id_pedido = p_id_pedido AND modelo_id_modelo = p_id_modelo) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe ese detalle para el pedido indicado';
+        ROLLBACK;
+    ELSE
+        UPDATE detalle_pedido
+        SET cantidad = p_cantidad
+        WHERE pedido_id_pedido = p_id_pedido AND modelo_id_modelo = p_id_modelo;
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+
+-- =========================================================
+-- BAJA de Detalle de Pedido
+-- =========================================================
+DROP PROCEDURE IF EXISTS sp_bajaPedidoDetalle;
+
+DELIMITER //
+CREATE PROCEDURE sp_bajaPedidoDetalle(
+    IN p_id_pedido INT,
+    IN p_id_modelo INT,
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al eliminar detalle del pedido';
+    END;
+
+    START TRANSACTION;
+
+    IF NOT EXISTS(SELECT 1 FROM detalle_pedido
+                  WHERE pedido_id_pedido = p_id_pedido AND modelo_id_modelo = p_id_modelo) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe ese detalle para el pedido indicado';
+        ROLLBACK;
+    ELSEIF EXISTS(SELECT 1 FROM automovil
+                  WHERE pedido_id_pedido = p_id_pedido AND modelo_id_modelo = p_id_modelo) THEN
+        SET nResultado = -3;
+        SET cMensaje = 'No se puede eliminar, ya se generaron automoviles para ese modelo en este pedido';
+        ROLLBACK;
+    ELSE
+        DELETE FROM detalle_pedido
+        WHERE pedido_id_pedido = p_id_pedido AND modelo_id_modelo = p_id_modelo;
 
         SET nResultado = 0;
         SET cMensaje = '';
