@@ -275,7 +275,7 @@ SET SQL_MODE=@OLD_SQL_MODE;
 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS;
 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS;
 
-
+-- ENTREGA N°2 DEL TP DE BASES DE DATOS 1 ABMs DE TABLAS
 
 DROP PROCEDURE IF EXISTS sp_altaConcesionario;
 
@@ -1008,3 +1008,88 @@ BEGIN
 END //
 DELIMITER ;
 
+
+-- ENTREGA N°3 DEL TP DE BASES DE DATOS 1 ETAPA 3 PUNTO 3 CREACION DE VEHICULOS EN ESTADO INICIAL SEGUN DATALLES DE UN PEDIDO
+
+USE tp_bases_datos_1;
+
+DROP PROCEDURE IF EXISTS sp_generarAutomovilesDesdePedido;
+
+DELIMITER //
+CREATE PROCEDURE sp_generarAutomovilesDesdePedido(
+    IN p_id_pedido INT,
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE v_id_modelo INT;
+    DECLARE v_cantidad INT;
+    DECLARE v_contador INT;
+    DECLARE v_chasis INT;
+    DECLARE v_patente VARCHAR(45);
+    DECLARE finished INT DEFAULT 0;
+
+    DECLARE cur CURSOR FOR
+        SELECT modelo_id_modelo, cantidad
+        FROM detalle_pedido
+        WHERE pedido_id_pedido = p_id_pedido;
+
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET finished = 1;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al generar los automoviles del pedido';
+    END;
+
+    START TRANSACTION;
+
+    IF NOT EXISTS(SELECT 1 FROM pedido WHERE id_pedido = p_id_pedido) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe el pedido';
+        ROLLBACK;
+	ELSEIF EXISTS(SELECT 1 FROM automovil WHERE pedido_id_pedido = p_id_pedido) THEN
+    SET nResultado = -3;
+    SET cMensaje = 'Ya se generaron los automoviles para este pedido';
+    ROLLBACK;
+    ELSE
+        OPEN cur;
+
+        getDetalle: LOOP
+            FETCH cur INTO v_id_modelo, v_cantidad;
+
+            IF finished = 1 THEN
+                LEAVE getDetalle;
+            END IF;
+
+            SET v_contador = 1;
+
+            WHILE v_contador <= v_cantidad DO
+
+                SET v_chasis = FLOOR(RAND() * 900000) + 100000;
+                WHILE EXISTS(SELECT 1 FROM automovil WHERE numero_de_chasis = v_chasis) DO
+                    SET v_chasis = FLOOR(RAND() * 900000) + 100000;
+                END WHILE;
+
+                SET v_patente = CONCAT('AA', LPAD(FLOOR(RAND() * 999999), 6, '0'));
+                WHILE EXISTS(SELECT 1 FROM automovil WHERE patente = v_patente) DO
+                    SET v_patente = CONCAT('AA', LPAD(FLOOR(RAND() * 999999), 6, '0'));
+                END WHILE;
+
+                INSERT INTO automovil(numero_de_chasis, patente, fecha_finalizacion, pedido_id_pedido, modelo_id_modelo)
+                VALUES (v_chasis, v_patente, NULL, p_id_pedido, v_id_modelo);
+
+                SET v_contador = v_contador + 1;
+            END WHILE;
+
+        END LOOP getDetalle;
+
+        CLOSE cur;
+
+        SET nResultado = 0;
+        SET cMensaje = '';
+        COMMIT;
+    END IF;
+END //
+DELIMITER ;
