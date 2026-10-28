@@ -392,9 +392,9 @@ END //
 DELIMITER ;
 
 
--- =========================================================
+
 -- ALTA de Pedido (cabecera)
--- =========================================================
+
 DROP PROCEDURE IF EXISTS sp_altaPedido;
 
 DELIMITER //
@@ -431,9 +431,7 @@ END //
 DELIMITER ;
 
 
--- =========================================================
 -- MODIFICACION de Pedido (cabecera)
--- =========================================================
 DROP PROCEDURE IF EXISTS sp_modificarPedido;
 
 DELIMITER //
@@ -474,9 +472,7 @@ END //
 DELIMITER ;
 
 
--- =========================================================
 -- BAJA de Pedido (cabecera)
--- =========================================================
 DROP PROCEDURE IF EXISTS sp_bajaPedido;
 
 DELIMITER //
@@ -514,9 +510,7 @@ BEGIN
 END //
 DELIMITER ;
 
--- =========================================================
 -- ALTA de Detalle de Pedido
--- =========================================================
 DROP PROCEDURE IF EXISTS sp_altaPedidoDetalle;
 
 DELIMITER //
@@ -562,9 +556,8 @@ END //
 DELIMITER ;
 
 
--- =========================================================
 -- MODIFICACION de Detalle de Pedido
--- =========================================================
+
 DROP PROCEDURE IF EXISTS sp_modificarPedidoDetalle;
 
 DELIMITER //
@@ -603,9 +596,8 @@ END //
 DELIMITER ;
 
 
--- =========================================================
 -- BAJA de Detalle de Pedido
--- =========================================================
+
 DROP PROCEDURE IF EXISTS sp_bajaPedidoDetalle;
 
 DELIMITER //
@@ -1090,6 +1082,219 @@ BEGIN
         SET nResultado = 0;
         SET cMensaje = '';
         COMMIT;
+    END IF;
+END //
+DELIMITER ;
+
+
+-- ENTREGA N°4 DEL TP DE BASES DE DATOS 1 ETAPA 3 PUNTO 4 
+ 
+DROP PROCEDURE IF EXISTS sp_iniciarMontaje;
+ 
+DELIMITER //
+CREATE PROCEDURE sp_iniciarMontaje(
+    IN p_patente VARCHAR(45),
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE v_chasis INT;
+    DECLARE v_id_modelo INT;
+    DECLARE v_id_linea INT;
+    DECLARE v_id_estacion INT;
+    DECLARE v_chasis_ocupante INT;
+ 
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al iniciar el montaje del automovil';
+    END;
+ 
+    START TRANSACTION;
+ 
+    IF NOT EXISTS(SELECT 1 FROM automovil WHERE patente = p_patente) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe el automovil registrado con la patente ingresada';
+        ROLLBACK;
+    ELSE
+        SELECT numero_de_chasis, modelo_id_modelo
+        INTO v_chasis, v_id_modelo
+        FROM automovil
+        WHERE patente = p_patente;
+ 
+        IF EXISTS(SELECT 1 FROM automovil_en_estacion WHERE automovil_numero_de_chasis = v_chasis) THEN
+            SET nResultado = -4;
+            SET cMensaje = 'El automovil ya inicio el montaje';
+            ROLLBACK;
+        ELSEIF NOT EXISTS(SELECT 1 FROM linea_de_montaje WHERE modelo_id_modelo = v_id_modelo) THEN
+            SET nResultado = -5;
+            SET cMensaje = 'El modelo del automovil no tiene una linea de montaje asignada';
+            ROLLBACK;
+        ELSE
+            SELECT idlinea_de_montaje
+            INTO v_id_linea
+            FROM linea_de_montaje
+            WHERE modelo_id_modelo = v_id_modelo;
+ 
+            IF NOT EXISTS(SELECT 1 FROM estacion WHERE linea_de_montaje_idlinea_de_montaje = v_id_linea) THEN
+                SET nResultado = -6;
+                SET cMensaje = 'La linea de montaje del automovil no tiene estaciones';
+                ROLLBACK;
+            ELSE
+                SELECT id_estacion
+                INTO v_id_estacion
+                FROM estacion
+                WHERE linea_de_montaje_idlinea_de_montaje = v_id_linea
+                ORDER BY orden
+                LIMIT 1;
+ 
+                IF EXISTS(SELECT 1 FROM automovil_en_estacion
+                          WHERE estacion_id_estacion = v_id_estacion AND fecha_hora_egreso IS NULL) THEN
+                    SELECT automovil_numero_de_chasis
+                    INTO v_chasis_ocupante
+                    FROM automovil_en_estacion
+                    WHERE estacion_id_estacion = v_id_estacion AND fecha_hora_egreso IS NULL
+                    LIMIT 1;
+ 
+                    SET nResultado = -3;
+                    SET cMensaje = CONCAT('La primera estacion se encuentra ocupada por el chasis: ', v_chasis_ocupante);
+                    ROLLBACK;
+                ELSE
+                    INSERT INTO automovil_en_estacion(automovil_numero_de_chasis, estacion_id_estacion, fecha_hora_ingreso, fecha_hora_egreso)
+                    VALUES (v_chasis, v_id_estacion, NOW(), NULL);
+ 
+                    SET nResultado = 0;
+                    SET cMensaje = '';
+                    COMMIT;
+                END IF;
+            END IF;
+        END IF;
+    END IF;
+END //
+DELIMITER ;
+
+
+-- ENTREGA N°4 DEL TP DE BASES DE DATOS 1 ETAPA 3 PUNTO 5
+
+USE tp_bases_datos_1;
+ 
+DROP PROCEDURE IF EXISTS sp_avanzarMontaje;
+ 
+DELIMITER //
+CREATE PROCEDURE sp_avanzarMontaje(
+    IN p_patente VARCHAR(45),
+    OUT nResultado INT,
+    OUT cMensaje VARCHAR(200)
+)
+BEGIN
+    DECLARE v_chasis INT;
+    DECLARE v_fecha_finalizacion DATETIME;
+    DECLARE v_id_estacion_actual INT;
+    DECLARE v_orden_actual INT;
+    DECLARE v_id_linea INT;
+    DECLARE v_id_estacion_siguiente INT;
+    DECLARE v_chasis_ocupante INT;
+    DECLARE v_ahora DATETIME;
+ 
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET nResultado = -1;
+        SET cMensaje = 'Error al avanzar el montaje del automovil';
+    END;
+ 
+    START TRANSACTION;
+ 
+    SET v_ahora = NOW();
+ 
+    IF NOT EXISTS(SELECT 1 FROM automovil WHERE patente = p_patente) THEN
+        SET nResultado = -2;
+        SET cMensaje = 'No existe el automovil registrado con la patente ingresada';
+        ROLLBACK;
+    ELSE
+        SELECT numero_de_chasis, fecha_finalizacion
+        INTO v_chasis, v_fecha_finalizacion
+        FROM automovil
+        WHERE patente = p_patente;
+ 
+        IF v_fecha_finalizacion IS NOT NULL THEN
+            SET nResultado = -5;
+            SET cMensaje = 'El automovil ya finalizo el montaje';
+            ROLLBACK;
+        ELSEIF NOT EXISTS(SELECT 1 FROM automovil_en_estacion WHERE automovil_numero_de_chasis = v_chasis) THEN
+            SET nResultado = -4;
+            SET cMensaje = 'El automovil todavia no inicio el montaje';
+            ROLLBACK;
+        ELSEIF NOT EXISTS(SELECT 1 FROM automovil_en_estacion
+                          WHERE automovil_numero_de_chasis = v_chasis AND fecha_hora_egreso IS NULL) THEN
+            SET nResultado = -6;
+            SET cMensaje = 'El automovil no se encuentra en ninguna estacion';
+            ROLLBACK;
+        ELSE
+            SELECT estacion_id_estacion
+            INTO v_id_estacion_actual
+            FROM automovil_en_estacion
+            WHERE automovil_numero_de_chasis = v_chasis AND fecha_hora_egreso IS NULL
+            LIMIT 1;
+ 
+            SELECT orden, linea_de_montaje_idlinea_de_montaje
+            INTO v_orden_actual, v_id_linea
+            FROM estacion
+            WHERE id_estacion = v_id_estacion_actual;
+ 
+			-- Se verifica si es la ultima estacion en la que ya estaba
+            IF NOT EXISTS(SELECT 1 FROM estacion 
+                          WHERE linea_de_montaje_idlinea_de_montaje = v_id_linea AND orden > v_orden_actual) THEN
+               
+                UPDATE automovil_en_estacion
+                SET fecha_hora_egreso = v_ahora
+                WHERE automovil_numero_de_chasis = v_chasis
+                  AND estacion_id_estacion = v_id_estacion_actual
+                  AND fecha_hora_egreso IS NULL;
+ 
+                UPDATE automovil
+                SET fecha_finalizacion = v_ahora
+                WHERE numero_de_chasis = v_chasis;
+ 
+                SET nResultado = 0;
+                SET cMensaje = '';
+                COMMIT;
+            ELSE
+                SELECT id_estacion
+                INTO v_id_estacion_siguiente
+                FROM estacion
+                WHERE linea_de_montaje_idlinea_de_montaje = v_id_linea AND orden > v_orden_actual
+                ORDER BY orden
+                LIMIT 1;
+ 
+                IF EXISTS(SELECT 1 FROM automovil_en_estacion
+                          WHERE estacion_id_estacion = v_id_estacion_siguiente AND fecha_hora_egreso IS NULL) THEN
+                    SELECT automovil_numero_de_chasis
+                    INTO v_chasis_ocupante
+                    FROM automovil_en_estacion
+                    WHERE estacion_id_estacion = v_id_estacion_siguiente AND fecha_hora_egreso IS NULL
+                    LIMIT 1;
+ 
+                    SET nResultado = -3;
+                    SET cMensaje = CONCAT('La estacion siguiente se encuentra ocupada por el chasis: ', v_chasis_ocupante);
+                    ROLLBACK;
+                ELSE
+                    UPDATE automovil_en_estacion
+                    SET fecha_hora_egreso = v_ahora
+                    WHERE automovil_numero_de_chasis = v_chasis
+                      AND estacion_id_estacion = v_id_estacion_actual
+                      AND fecha_hora_egreso IS NULL;
+ 
+                    INSERT INTO automovil_en_estacion(automovil_numero_de_chasis, estacion_id_estacion, fecha_hora_ingreso, fecha_hora_egreso)
+                    VALUES (v_chasis, v_id_estacion_siguiente, v_ahora, NULL);
+ 
+                    SET nResultado = 0;
+                    SET cMensaje = '';
+                    COMMIT;
+                END IF;
+            END IF;
+        END IF;
     END IF;
 END //
 DELIMITER ;
